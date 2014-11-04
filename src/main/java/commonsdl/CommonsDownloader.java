@@ -54,13 +54,15 @@ public final class CommonsDownloader {
 				.parallel()
 				.map(s -> s.substring(0, s.lastIndexOf(',')))
 				.forEach(s -> this.download(s, download.getDestination()));
-		} finally {
 			try {
 				LOGGER.info("Waiting for downloads to complete");
 				latch.await();
 			} catch (final InterruptedException e) {
 				Thread.interrupted();
 			}
+		} catch (final Throwable t) {
+			LOGGER.error("Oups", t);
+		} finally {
 			LOGGER.info("All done");
 			this.client.close();
 		}
@@ -68,7 +70,7 @@ public final class CommonsDownloader {
 	
 	private void download(final String fileName, final Path destination) {
 		final StructuredDataMessage event = new StructuredDataMessage(Integer.toHexString(fileName.hashCode()) , null, "download");
-		final Path destinationFile = Paths.get(destination.toString(), fileName);
+		final Path destinationFile = Paths.get(destination.toString(), fileName.replaceAll("[:*?\"<>|/\\\\]", "_"));
 		event.put("destinationFile", destinationFile.toAbsolutePath().toString());
 		if (download.getMode() == Mode.RESTART || !destinationFile.toFile().exists()) {
 			try {
@@ -127,7 +129,7 @@ public final class CommonsDownloader {
 
 		@Override
 		public void completed(final HttpResponse response) {
-			final Path destinationFile = Paths.get(destination.toString(), fileName);
+			final Path destinationFile = getDestinationFile();
 			try (final BufferedOutputStream os = new BufferedOutputStream(Files.newOutputStream(destinationFile, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE))) {
 				response.getEntity().writeTo(os);
 				event.put("status", "success");
@@ -139,6 +141,10 @@ public final class CommonsDownloader {
 			} finally {
 				latch.countDown();
 			}
+		}
+
+		private Path getDestinationFile() {
+			return Paths.get(destination.toString(), fileName.replaceAll("[:*?\"<>|/\\\\]", "_"));
 		}
 
 		@Override
